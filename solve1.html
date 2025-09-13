@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <title>Kod → log + wynik</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { margin:0; font:15px/1.5 ui-monospace, Menlo, Consolas, monospace; background:#0b0d10; color:#e8edf3; }
+    .wrap { max-width:900px; margin:auto; padding:24px; }
+    h1 { font-size:22px; margin:0 0 12px; }
+    textarea { width:100%; min-height:150px; padding:10px; background:#0e1319; color:#e8edf3;
+      border:1px solid #243041; border-radius:10px; resize:vertical; }
+    button { background:#6aa1ff; border:0; color:#08111f; padding:10px 16px; border-radius:10px;
+      margin-top:10px; font-weight:700; cursor:pointer; }
+    pre { background:#0e1319; border:1px solid #243041; padding:14px; border-radius:12px;
+      white-space:pre-wrap; margin-top:16px; }
+    .muted { color:#9aa4b2; }
+    .resultBox { margin-top:20px; padding:14px; border-radius:12px; background:#0f1a14; border:1px solid #1f3b2c; color:#7be495; font-weight:700; white-space:pre-wrap; }
+    .resultBox .line { margin:4px 0; }
+    .resultBox strong { color:#b6ffb6; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Kod → szczegółowy log + wynik</h1>
+    <p class="muted">Zasady: 8=N, 2=S, 6=E, 4=W, 7=NW, 9=NE, 1=SW, 3=SE. Start = 5. Token X=1 krok; XY=kierunek X, Y kroków. Zawijanie na krawędziach.</p>
+    <textarea id="inp">8 43 42 17 18 44
+4 28 27 49 34 27
+8 25 24 23 21 38
+6 46 23 48 48 12</textarea>
+    <br><button id="run">Oblicz</button>
+
+    <div id="resultBox" class="resultBox" style="display:none"></div>
+
+    <pre id="out"></pre>
+  </div>
+
+  <script>
+    const layout=[[7,8,9],[4,5,6],[1,2,3]];
+    const posByVal=new Map();
+    for(let r=0;r<3;r++)for(let c=0;c<3;c++)posByVal.set(layout[r][c],{r,c});
+    const dirs={
+      8:{dr:-1,dc:0,name:"góra (N)"},
+      2:{dr:1,dc:0,name:"dół (S)"},
+      6:{dr:0,dc:1,name:"prawo (E)"},
+      4:{dr:0,dc:-1,name:"lewo (W)"},
+      7:{dr:-1,dc:-1,name:"góra+lewo (NW)"},
+      9:{dr:-1,dc:1,name:"góra+prawo (NE)"},
+      1:{dr:1,dc:-1,name:"dół+lewo (SW)"},
+      3:{dr:1,dc:1,name:"dół+prawo (SE)"}
+    };
+
+    function moveStep(val,token){
+      const start=posByVal.get(val);
+      const x=token[0];
+      const steps= token.length>1? parseInt(token[1],10):1;
+      let {r,c}=start, path=[val];
+      const {dr,dc,name}=dirs[x];
+      for(let k=0;k<steps;k++){ r=(r+dr+3)%3; c=(c+dc+3)%3; path.push(layout[r][c]); }
+      return {end:layout[r][c], path, desc:`${token} = ${name}, ${steps} krok${steps>1?"ów":""}`};
+    }
+
+    function solveLine(line){
+      const tokens=line.trim().split(/\s+/).filter(Boolean);
+      if(!tokens.length) return {log:"", results:""};
+      let log=`Liczby: ${line}\n---------------------\nStart: 5\n`;
+      let cur=5, results=[];
+      tokens.forEach((t,i)=>{
+        const {end,path,desc}=moveStep(cur,t);
+        log+=`---------------------\n${desc}:\n${path.join(" → ")}\n(wynik #${i+1} = ${end})\n`;
+        cur=end; results.push(end);
+      });
+      log+=`\n==================================\n${line} → ${results.join(" ")}\n`;
+      return {log, results: `${line} → <strong>${results.join(" ")}</strong>`};
+    }
+
+    document.getElementById("run").addEventListener("click",()=>{
+      const lines=document.getElementById("inp").value.trim().split(/\r?\n/).filter(Boolean);
+      let out=""; let allResults=[];
+      lines.forEach(l=>{
+        const {log,results}=solveLine(l);
+        out+=log+"\n\n";
+        allResults.push(`<div class="line">${results}</div>`);
+      });
+      document.getElementById("out").textContent=out.trim();
+
+      // pokaz wyniki
+      document.getElementById("resultBox").style.display="block";
+      document.getElementById("resultBox").innerHTML=allResults.join("");
+    });
+  </script>
+</body>
+</html>
