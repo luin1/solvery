@@ -2,21 +2,21 @@
 <html lang="pl">
 <head>
   <meta charset="utf-8" />
-  <title>Kod → log + wynik (3×3, start=1. liczba; 1=S,2=W,3=N,4=E)</title>
+  <title>Kod → log + wyniki dla wielu sekwencji (3×3)</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
     body { margin:0; font:15px/1.5 ui-monospace, Menlo, Consolas, monospace; background:#0b0d10; color:#e8edf3; }
-    .wrap { max-width:900px; margin:auto; padding:24px; }
+    .wrap { max-width:980px; margin:auto; padding:24px; }
     h1 { font-size:22px; margin:0 0 12px; }
     textarea { width:100%; min-height:150px; padding:10px; background:#0e1319; color:#e8edf3;
       border:1px solid #243041; border-radius:10px; resize:vertical; }
     button { background:#6aa1ff; border:0; color:#08111f; padding:10px 16px; border-radius:10px;
       margin-top:10px; font-weight:700; cursor:pointer; }
-    pre { background:#0e1319; border:1px solid #243041; padding:14px; border-radius:12px;
-      white-space:pre-wrap; margin-top:16px; }
+    pre { background:#0e1319; border:1px solid #243041; padding:14px; border-radius:12px; white-space:pre-wrap; margin-top:16px; }
     .muted { color:#9aa4b2; }
     .resultBox { margin-top:20px; padding:14px; border-radius:12px; background:#0f1a14; border:1px solid #1f3b2c; color:#7be495; font-weight:700; white-space:pre-wrap; }
-    .resultBox .line { margin:4px 0; }
+    .resultBox .group { margin:8px 0 14px; }
+    .resultBox .seq { margin:2px 0; }
     .resultBox strong { color:#b6ffb6; }
     .grid { display:grid; grid-template-columns:repeat(3,60px); gap:8px; margin:18px 0 6px; }
     .cell { display:grid; place-items:center; height:60px; border-radius:14px; background:#0e1319; border:1px solid #243041; font-weight:700; font-size:20px; }
@@ -25,11 +25,15 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>Kod → szczegółowy log + wynik</h1>
+    <h1>Kod → szczegółowy log + wyniki dla wszystkich sekwencji</h1>
     <p class="muted">
       Siatka (jak klawiatura): 7 8 9 / 4 5 6 / 1 2 3. <br>
-      Start = <strong>pierwsza liczba</strong> (1–9). Kierunki: <strong>1=S</strong> (dół), <strong>2=W</strong> (lewo), <strong>3=N</strong> (góra), <strong>4=E</strong> (prawo).<br>
-      Kroki -  X = 1 krok; token XY = kierunek X i Y kroków. Zawijanie na krawędziach.
+      Start = <strong>pierwsza liczba</strong> (1–9). <code>X</code> = 1 krok; token <code>XY</code> = kierunek <code>X</code>, <code>Y</code> kroków. Zawijanie na krawędziach (torus).<br>
+      Sekwencje (1–4 → N/E/S/W):<br>
+      1) 1=N, 2=E, 3=S, 4=W &nbsp;&nbsp; 2) 1=E, 2=S, 3=W, 4=N<br>
+      3) 1=S, 2=W, 3=N, 4=E &nbsp;&nbsp; 4) 1=W, 2=N, 3=E, 4=S<br>
+      5) 1=N, 2=W, 3=S, 4=E &nbsp;&nbsp; 6) 1=W, 2=S, 3=E, 4=N<br>
+      7) 1=S, 2=E, 3=N, 4=W &nbsp;&nbsp; 8) 1=E, 2=N, 3=W, 4=S
     </p>
 
     <textarea id="inp">2 27 13 26 24 47
@@ -42,30 +46,38 @@
   </div>
 
   <script>
-    // Siatka 3x3 (wartości w komórkach)
-    const layout = [
-      [7,8,9],
-      [4,5,6],
-      [1,2,3],
-    ];
+    // Siatka 3×3
+    const layout = [[7,8,9],[4,5,6],[1,2,3]];
     const posByVal = new Map();
     for (let r=0;r<3;r++) for (let c=0;c<3;c++) posByVal.set(layout[r][c], {r,c});
 
-    // Kierunki: 1=S, 2=W, 3=N, 4=E
-    const dirs = {
-      1: {dr: 1, dc: 0, name: "dół (S)"},
-      2: {dr: 0, dc:-1, name: "lewo (W)"},
-      3: {dr:-1, dc: 0, name: "góra (N)"},
-      4: {dr: 0, dc: 1, name: "prawo (E)"},
+    // Wektory kierunków
+    const vec = {
+      N:{dr:-1, dc:0,  name:"góra (N)"},
+      E:{dr:0,  dc:1,  name:"prawo (E)"},
+      S:{dr:1,  dc:0,  name:"dół (S)"},
+      W:{dr:0,  dc:-1, name:"lewo (W)"},
     };
 
-    function mustInt(s){ const n = parseInt(s,10); if (Number.isNaN(n)) throw Error("Nieprawidłowa liczba: "+s); return n; }
+    // 8 sekwencji mapowania cyfr 1–4 → N/E/S/W
+    const SEQS = [
+      { id:"1) 1=N,2=E,3=S,4=W",   map:{1:"N",2:"E",3:"S",4:"W"} },
+      { id:"2) 1=E,2=S,3=W,4=N",   map:{1:"E",2:"S",3:"W",4:"N"} },
+      { id:"3) 1=S,2=W,3=N,4=E",   map:{1:"S",2:"W",3:"N",4:"E"} },
+      { id:"4) 1=W,2=N,3=E,4=S",   map:{1:"W",2:"N",3:"E",4:"S"} },
+      { id:"5) 1=N,2=W,3=S,4=E",   map:{1:"N",2:"W",3:"S",4:"E"} },
+      { id:"6) 1=W,2=S,3=E,4=N",   map:{1:"W",2:"S",3:"E",4:"N"} },
+      { id:"7) 1=S,2=E,3=N,4=W",   map:{1:"S",2:"E",3:"N",4:"W"} },
+      { id:"8) 1=E,2=N,3=W,4=S",   map:{1:"E",2:"N",3:"W",4:"S"} },
+    ];
 
-    function moveFrom(cur, token){
+    function mustInt(s){ const n=parseInt(s,10); if(Number.isNaN(n)) throw Error("Nieprawidłowa liczba: "+s); return n; }
+
+    function moveFrom(cur, token, seqMap){
       token = token.trim();
       if (!token) throw Error("Pusty token");
       const d = token[0];
-      if (!dirs[d]) throw Error(`Kierunek musi być 1/2/3/4 (otrzymano "${token}")`);
+      if (!/[1-4]/.test(d)) throw Error(`Kierunek musi być 1/2/3/4 (otrzymano "${token}")`);
       let steps = 1;
       if (token.length >= 2) {
         const y = token[1];
@@ -74,58 +86,63 @@
       }
       const start = posByVal.get(cur);
       if (!start) throw Error("Nieznane pole startowe: "+cur);
+
+      const dirKey = seqMap[d];                 // "N"|"E"|"S"|"W"
+      const {dr,dc,name} = vec[dirKey];
+
       let {r,c} = start;
-      const {dr,dc,name} = dirs[d];
       const path = [cur];
-      for (let k=0;k<steps;k++) {
-        r = (r + dr + 3) % 3;
-        c = (c + dc + 3) % 3;
-        path.push(layout[r][c]);
-      }
+      for (let k=0;k<steps;k++){ r=(r+dr+3)%3; c=(c+dc+3)%3; path.push(layout[r][c]); }
       return { end: layout[r][c], path, desc: `${token} = ${name}, ${steps} krok${steps===1?"":"ów"}` };
     }
 
-    function solveLine(line){
-      const tokens = line.trim().split(/\s+/).filter(Boolean);
+    function solveLineForSeq(line, seq){
+      const tokens=line.trim().split(/\s+/).filter(Boolean);
       if (!tokens.length) return {log:"", resultLine:""};
-      // Start = pierwsza liczba (1..9), bez ruchu
       const startVal = mustInt(tokens[0]);
       if (!posByVal.has(startVal)) throw Error(`Pierwsza liczba musi być 1–9 (otrzymano ${startVal})`);
-      let log = `Liczby: ${line}\n---------------------\nStart: ${startVal}\n`;
+
+      let log = `Liczby: ${line}\nSekwencja: ${seq.id}\n---------------------\nStart: ${startVal}\n(wynik #1 = ${startVal})\n`;
       let cur = startVal, results=[startVal];
-      log += `(wynik #1 = ${startVal})\n`;
+
       for (let i=1;i<tokens.length;i++){
         log += `---------------------\n`;
-        const {end, path, desc} = moveFrom(cur, tokens[i]);
+        const {end,path,desc} = moveFrom(cur, tokens[i], seq.map);
         log += `${desc}:\n${path.join(" → ")}\n(wynik #${i+1} = ${end})\n`;
-        cur = end;
-        results.push(end);
+        cur = end; results.push(end);
       }
       log += `\n==================================\n${line} → ${results.join(" ")}\n`;
-      return {log, resultLine: `${line} → <strong>${results.join(" ")}</strong>`};
+      return { log, resultHTML: `<div class="seq">${seq.id}: ${line} → <strong>${results.join(" ")}</strong></div>` };
     }
 
     document.getElementById("run").addEventListener("click", () => {
       const lines = document.getElementById("inp").value.trim().split(/\r?\n/).filter(Boolean);
       const out = document.getElementById("out");
       const box = document.getElementById("resultBox");
-      let allLogs = "", summary = [];
+      let allLogs = "";
+      let summaryHTML = "";
+
       try {
         for (const l of lines) {
-          const {log, resultLine} = solveLine(l);
-          allLogs += log + "\n";
-          summary.push(`<div class="line">${resultLine}</div>`);
+          summaryHTML += `<div class="group">`;
+          for (const seq of SEQS) {
+            const {log, resultHTML} = solveLineForSeq(l, seq);
+            allLogs += log + "\n";
+            summaryHTML += resultHTML;
+          }
+          summaryHTML += `</div>`;
         }
         box.style.display = "block";
-        box.innerHTML = summary.join("");
+        box.innerHTML = summaryHTML.trim();
         out.textContent = allLogs.trim();
       } catch (e) {
         box.style.display = "block";
-        box.innerHTML = `<div class="line">BŁĄD: ${e.message}</div>`;
+        box.innerHTML = `<div class="seq">BŁĄD: ${e.message}</div>`;
         out.textContent = "";
       }
     });
 
+    // Autostart
     window.addEventListener("DOMContentLoaded", () => document.getElementById("run").click());
   </script>
 </body>
